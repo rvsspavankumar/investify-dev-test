@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  APPLICANT
+  DECISION_MAKER
+  INSTITUTION_ADMIN
+  TRUST_OPS_ADMIN
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  IDENTITY_VERIFIED
+  AUTHORITY_VERIFIED
+  LIMITED_HISTORY
+  UNABLE_TO_VERIFY
+}
+
+enum LaneType {
+  CAPITAL
+  PILOT_PARTNERSHIP
+  LICENSING_IP
+  REGULATORY
+}
+
+enum AccessRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum TargetType {
+  DECISION_MAKER_PROFILE
+  INTAKE_LANE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  role      Role
+  createdAt DateTime @default(now())
+
+  profile   Profile?
+  auditLogs AuditLog[]
+
+  verificationRequests VerificationRequest[] @relation("ApplicantVerificationRequests")
+  accessRequests       AccessRequest[]       @relation("RequesterAccessRequests")
+}
+
+model Profile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  name               String
+  org                String
+  title              String
+  location           String?
+  linkedinUrl        String
+  websiteUrl         String?
+  intentLanes        LaneType[]
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model VerificationRequest {
+  id              String             @id @default(cuid())
+  applicantUserId String
+  status          VerificationStatus @default(PENDING_REVIEW)
+  note            String?
+  desiredLanes    LaneType[]
+  submittedAt     DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  applicant User                @relation("ApplicantVerificationRequests", fields: [applicantUserId], references: [id])
+  evidence  EvidenceItem[]
+  events    VerificationEvent[]
+}
+
+model EvidenceItem {
+  id                    String  @id @default(cuid())
+  verificationRequestId String
+  url                   String
+  label                 String?
+
+  request VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+}
+
+model VerificationEvent {
+  id                    String             @id @default(cuid())
+  verificationRequestId String
+  actorUserId           String
+  fromStatus            VerificationStatus
+  toStatus              VerificationStatus
+  reasonCode            String
+  notes                 String?
+  timestamp             DateTime           @default(now())
+
+  request VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+}
+
+model Institution {
+  id   String @id @default(cuid())
+  name String
+
+  lanes IntakeLane[]
+}
+
+model IntakeLane {
+  id                  String   @id @default(cuid())
+  institutionId       String
+  laneType            LaneType
+  description         String
+  active              Boolean  @default(true)
+  weeklyCap           Int
+  requireVerification Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  institution Institution @relation(fields: [institutionId], references: [id])
+}
+
+model AccessRequest {
+  id              String              @id @default(cuid())
+  requesterUserId String
+  targetType      TargetType
+  targetId        String
+  status          AccessRequestStatus @default(PENDING)
+  oneLineSummary  String
+  whatYouWant     String
+  whyNow          String
+  proofLinks      String[]
+  timeline        String
+  createdAt       DateTime            @default(now())
+
+  requester User             @relation("RequesterAccessRequests", fields: [requesterUserId], references: [id])
+  contact   ContactExchange?
+}
+
+model ContactExchange {
+  id              String   @id @default(cuid())
+  accessRequestId String   @unique
+  method          String
+  timestamp       DateTime @default(now())
+
+  accessRequest AccessRequest @relation(fields: [accessRequestId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  actor User @relation(fields: [actorUserId], references: [id])
+}
